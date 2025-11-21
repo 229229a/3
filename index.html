@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大小球合成挑战</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4F46E5',
+                        secondary: '#10B981',
+                        accent: '#F59E0B',
+                        dark: '#1F2937',
+                        light: '#F9FAFB'
+                    },
+                    fontFamily: {
+                        game: ['"Press Start 2P"', 'cursive', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <!-- 自定义样式 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .ball-shadow {
+                filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1));
+            }
+            .game-gradient {
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            }
+            .btn-hover {
+                @apply transition-all duration-200 hover:scale-105 hover:shadow-lg active:scale-95;
+            }
+        }
+    </style>
+</head>
+<body class="game-gradient min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
+    <div class="max-w-5xl w-full mx-auto">
+        <!-- 标题区域 -->
+        <div class="text-center mb-6">
+            <h1 class="text-[clamp(2rem,5vw,3.5rem)] font-bold text-primary mb-2">
+                <i class="fa fa-circle-o text-accent"></i> 
+                大小球合成挑战 
+                <i class="fa fa-circle text-primary"></i>
+            </h1>
+            <p class="text-gray-600 text-lg">左右移动调整位置，相同大小的球碰撞合成更大的球！</p>
+        </div>
+        
+        <!-- 游戏区域 -->
+        <div class="relative bg-white rounded-2xl shadow-xl p-4 md:p-6 mb-6 overflow-hidden">
+            <canvas id="gameCanvas" class="w-full rounded-xl border border-gray-100" width="900" height="600"></canvas>
+            
+            <!-- 分数显示 -->
+            <div class="absolute top-4 right-4 bg-accent/90 text-white px-4 py-2 rounded-full shadow-lg">
+                <span class="font-bold text-xl">分数: <span id="scoreValue" class="text-2xl">0</span></span>
+            </div>
+            
+            <!-- 下一个球预览 -->
+            <div class="absolute top-4 left-4 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg flex items-center">
+                <span class="font-bold text-dark mr-2">下一个:</span>
+                <div id="nextBallPreview" class="w-10 h-10 rounded-full bg-blue-300 flex items-center justify-center">
+                    <span class="text-white text-xl"><i class="fa fa-circle"></i></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 控制区域 -->
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+            <button id="leftBtn" class="flex-1 bg-primary text-white py-4 px-6 rounded-xl shadow btn-hover flex items-center justify-center">
+                <i class="fa fa-arrow-left text-2xl"></i>
+            </button>
+            
+            <button id="dropBtn" class="flex-1 bg-secondary text-white py-4 px-6 rounded-xl shadow btn-hover flex items-center justify-center">
+                <i class="fa fa-arrow-down text-2xl"></i> 快速下落
+            </button>
+            
+            <button id="rightBtn" class="flex-1 bg-primary text-white py-4 px-6 rounded-xl shadow btn-hover flex items-center justify-center">
+                <i class="fa fa-arrow-right text-2xl"></i>
+            </button>
+        </div>
+        
+        <!-- 游戏信息 -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-xl font-bold text-dark mb-3 flex items-center">
+                <i class="fa fa-info-circle text-primary mr-2"></i> 游戏说明
+            </h3>
+            <ul class="space-y-2 text-gray-700">
+                <li class="flex items-start">
+                    <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                    <span>左右移动调整球的位置，松开后球会落下</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                    <span>相同大小的球碰撞会合成更大的球</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                    <span>球堆到顶部时游戏结束</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                    <span>键盘控制：左右方向键移动，空格键快速下落</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('scoreValue');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        const dropBtn = document.getElementById('dropBtn');
+        const nextBallPreview = document.getElementById('nextBallPreview');
+        
+        // 游戏配置
+        const config = {
+            ballCount: 8,          // 球的大小级别数量
+            moveSpeed: 15,         // 移动速度
+            dropSpeed: 5,          // 下落速度
+            acceleration: 0.02,    // 下落加速度
+            initialDropInterval: 1000, // 初始下落间隔(ms)
+            minDropInterval: 300,  // 最小下落间隔(ms)
+            speedIncreaseRate: 0.98, // 速度增加率
+            spawnZoneHeight: 50,   // 生成区域高度
+            previewSize: 40,       // 预览球大小
+        };
+        
+        // 球的配置（大小、颜色、分数）
+        const ballTypes = [
+            { radius: 15, color: '#93C5FD', score: 10 },  // 最小球
+            { radius: 20, color: '#60A5FA', score: 20 },
+            { radius: 25, color: '#3B82F6', score: 30 },
+            { radius: 30, color: '#2563EB', score: 50 },
+            { radius: 35, color: '#1D4ED8', score: 80 },
+            { radius: 40, color: '#1E40AF', score: 120 },
+            { radius: 45, color: '#1E3A8A', score: 200 },
+            { radius: 50, color: '#172554', score: 300 }   // 最大球
+        ];
+        
+        // 游戏状态
+        let gameState = {
+            balls: [],              // 所有球
+            currentBall: null,      // 当前控制的球
+            nextBallType: 0,        // 下一个球的类型
+            score: 0,               // 当前分数
+            isGameOver: false,      // 游戏是否结束
+            dropInterval: config.initialDropInterval, // 当前下落间隔
+            lastDropTime: 0,        // 上次下落时间
+            isDragging: false,      // 是否正在拖动
+            animationId: null,      // 动画帧ID
+        };
+        
+        // 初始化游戏
+        function initGame() {
+            // 重置游戏状态
+            gameState = {
+                balls: [],
+                currentBall: null,
+                nextBallType: Math.floor(Math.random() * 3), // 初始生成小球
+                score: 0,
+                isGameOver: false,
+                dropInterval: config.initialDropInterval,
+                lastDropTime: Date.now(),
+                isDragging: false,
+                animationId: null,
+            };
+            
+            // 更新分数显示
+            updateScore();
+            
+            // 创建第一个球
+            createNewBall();
+            
+            // 更新下一个球预览
+            updateNextBallPreview();
+            
+            // 开始游戏循环
+            gameLoop();
+            
+            // 设置控制
+            setupControls();
+        }
+        
+        // 创建新球
+        function createNewBall() {
+            // 如果游戏结束则不创建新球
+            if (gameState.isGameOver) return;
+            
+            // 从顶部中间位置生成
+            const startX = canvas.width / 2;
+            
+            gameState.currentBall = {
+                type: gameState.nextBallType,
+                x: startX,
+                y: config.spawnZoneHeight + ballTypes[gameState.nextBallType].radius,
+                radius: ballTypes[gameState.nextBallType].radius,
+                color: ballTypes[gameState.nextBallType].color,
+                score: ballTypes[gameState.nextBallType].score,
+                velocityY: 0,
+                isDropping: false
+            };
+            
+            // 生成下一个球类型（优先生成小球）
+            gameState.nextBallType = Math.random() > 0.7 
+                ? Math.floor(Math.random() * (config.ballCount - 2)) 
+                : Math.floor(Math.random() * 3);
+                
+            // 更新预览
+            updateNextBallPreview();
+            
+            // 检查游戏是否结束（顶部是否有球）
+            checkGameOver();
+        }
+        
+        // 更新下一个球预览
+        function updateNextBallPreview() {
+            const ballType = ballTypes[gameState.nextBallType];
+            nextBallPreview.style.width = `${config.previewSize}px`;
+            nextBallPreview.style.height = `${config.previewSize}px`;
+            nextBallPreview.style.backgroundColor = ballType.color;
+            nextBallPreview.innerHTML = `<i class="fa fa-circle text-white" style="font-size: ${config.previewSize * 0.6}px"></i>`;
+        }
+        
+        // 绘制游戏
+        function drawGame() {
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制背景网格
+            drawGrid();
+            
+            // 绘制所有静止的球
+            gameState.balls.forEach(ball => {
+                drawBall(ball);
+            });
+            
+            // 绘制当前控制的球
+            if (gameState.currentBall) {
+                drawBall(gameState.currentBall);
+                
+                // 如果正在下落，绘制轨迹预测
+                if (gameState.currentBall.isDropping) {
+                    drawPrediction轨迹(gameState.currentBall);
+                }
+            }
+            
+            // 绘制生成区域
+            drawSpawnZone();
+            
+            // 绘制游戏结束界面
+            if (gameState.isGameOver) {
+                drawGameOver();
+            }
+        }
+        
+        // 绘制网格背景
+        function drawGrid() {
+            ctx.strokeStyle = 'rgba(220, 220, 220, 0.3)';
+            ctx.lineWidth = 1;
+            
+            // 水平线
+            for (let y = 0; y < canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // 垂直线
+            for (let x = 0; x < canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+        }
+        
+        // 绘制球
+        function drawBall(ball) {
+            // 绘制球阴影（提升视觉效果）
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 5;
+            
+            // 绘制球
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+            
+            // 绘制高光（增加立体感）
+            ctx.beginPath();
+            ctx.arc(
+                ball.x - ball.radius * 0.3, 
+                ball.y - ball.radius * 0.3, 
+                ball.radius * 0.3, 
+                0, Math.PI * 2
+            );
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+            
+            // 重置阴影
+            ctx.shadowBlur = 0;
+        }
+        
+        // 绘制生成区域
+        function drawSpawnZone() {
+            ctx.fillStyle = 'rgba(147, 197, 253, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, config.spawnZoneHeight);
+            
+            ctx.strokeStyle = 'rgba(147, 197, 253, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, config.spawnZoneHeight);
+            ctx.lineTo(canvas.width, config.spawnZoneHeight);
+            ctx.stroke();
+        }
+        
+        // 绘制轨迹预测
+        function drawPrediction轨迹(ball) {
+            ctx.strokeStyle = 'rgba(156, 163, 175, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            
+            ctx.beginPath();
+            
+            // 创建临时球用于轨迹计算
+            const tempBall = {
+                x: ball.x,
+                y: ball.y,
+                radius: ball.radius,
+                velocityY: ball.velocityY
+            };
+            
+            // 绘制轨迹
+            ctx.moveTo(tempBall.x, tempBall.y);
+            
+            while (true) {
+                tempBall.velocityY += config.acceleration;
+                tempBall.y += tempBall.velocityY;
+                
+                // 检查是否触底或碰撞其他球
+                const hitBottom = tempBall.y + tempBall.radius >= canvas.height;
+                let hitBall = false;
+                
+                if (!hitBottom) {
+                    for (const b of gameState.balls) {
+                        const dx = tempBall.x - b.x;
+                        const dy = tempBall.y - b.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < tempBall.radius + b.radius) {
+                            hitBall = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (hitBottom || hitBall) break;
+                
+                ctx.lineTo(tempBall.x, tempBall.y);
+            }
+            
+            ctx.stroke();
+            ctx.setLineDash([]); // 重置虚线
+        }
+        
+        // 绘制游戏结束界面
+        function drawGameOver() {
+            // 半透明遮罩
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 文字
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 40px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('游戏结束!', canvas.width / 2, canvas.height / 2 - 30);
+            
+            ctx.font = '24px Arial';
+            ctx.fillText(`最终得分: ${gameState.score}`, canvas.width / 2, canvas.height / 2 + 20);
+            
+            ctx.font = '18px Arial';
+            ctx.fillText('按重新开始按钮继续', canvas.width / 2, canvas.height / 2 + 60);
+        }
+        
+        // 移动球
+        function moveBall(direction) {
+            if (!gameState.currentBall || gameState.currentBall.isDropping || gameState.isGameOver) return;
+            
+            const newX = gameState.currentBall.x + direction * config.moveSpeed;
+            const radius = gameState.currentBall.radius;
+            
+            // 边界检查
+            if (newX - radius > 0 && newX + radius < canvas.width) {
+                gameState.currentBall.x = newX;
+            }
+        }
+        
+        // 释放球（开始下落）
+        function dropBall() {
+            if (!gameState.currentBall || gameState.currentBall.isDropping || gameState.isGameOver) return;
+            
+            gameState.currentBall.isDropping = true;
+            gameState.currentBall.velocityY = config.dropSpeed;
+        }
+        
+        // 快速下落
+        function quickDrop() {
+            if (!gameState.currentBall || gameState.currentBall.isDropping || gameState.isGameOver) return;
+            
+            // 直接放置到底部
+            let maxY = canvas.height - gameState.currentBall.radius;
+            
+            // 检查与其他球的碰撞
+            gameState.balls.forEach(ball => {
+                const dx = gameState.currentBall.x - ball.x;
+                const distance = Math.sqrt(dx * dx);
+                
+                if (distance < gameState.currentBall.radius + ball.radius) {
+                    const possibleY = ball.y - ball.radius - gameState.currentBall.radius;
+                    if (possibleY < maxY) {
+                        maxY = possibleY;
+                    }
+                }
+            });
+            
+            gameState.currentBall.y = maxY;
+            fixBall();
+        }
+        
+        // 处理球的下落
+        function handleFalling() {
+            if (!gameState.currentBall || !gameState.currentBall.isDropping || gameState.isGameOver) return;
+            
+            // 应用重力
+            gameState.currentBall.velocityY += config.acceleration;
+            gameState.currentBall.y += gameState.currentBall.velocityY;
+            
+            // 检测碰撞
+            const hitBottom = gameState.currentBall.y + gameState.currentBall.radius >= canvas.height;
+            let hitBall = false;
+            
+            if (!hitBottom) {
+                for (const ball of gameState.balls) {
+                    const dx = gameState.currentBall.x - ball.x;
+                    const dy = gameState.currentBall.y - ball.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < gameState.currentBall.radius + ball.radius) {
+                        // 计算碰撞后的位置
+                        const overlap = gameState.currentBall.radius + ball.radius - distance;
+                        gameState.currentBall.y -= overlap * (dy / distance);
+                        hitBall = true;
+                        break;
+                    }
+                }
+            }
+            
+            // 如果碰撞到底部或其他球
+            if (hitBottom || hitBall) {
+                fixBall();
+            }
+        }
+        
+        // 固定球位置并检查合并
+        function fixBall() {
+            // 将当前球添加到静止球列表
+            gameState.balls.push(gameState.currentBall);
+            
+            // 检查是否可以合并
+            checkMerge(gameState.currentBall);
+            
+            // 加速游戏
+            gameState.dropInterval = Math.max(
+                config.minDropInterval, 
+                gameState.dropInterval * config.speedIncreaseRate
+            );
+            
+            // 创建新球
+            setTimeout(createNewBall, 500);
+            
+            // 重置当前球
+            gameState.currentBall = null;
+        }
+        
+        // 检查合并
+        function checkMerge(newBall) {
+            let merged = false;
+            
+            // 遍历所有球检查合并可能
+            for (let i = gameState.balls.length - 1; i >= 0; i--) {
+                const ball = gameState.balls[i];
+                
+                // 跳过自己
+                if (ball === newBall) continue;
+                
+                // 检查是否类型相同且足够接近
+                if (ball.type === newBall.type) {
+                    const dx = newBall.x - ball.x;
+                    const dy = newBall.y - ball.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < newBall.radius + ball.radius * 1.1) { // 允许微小的距离误差
+                        // 可以合并
+                        merged = true;
+                        
+                        // 添加分数
+                        gameState.score += ball.score;
+                        updateScore();
+                        
+                        // 移除两个球
+                        const index1 = gameState.balls.indexOf(newBall);
+                        const index2 = gameState.balls.indexOf(ball);
+                        
+                        gameState.balls.splice(Math.max(index1, index2), 1);
+                        gameState.balls.splice(Math.min(index1, index2), 1);
+                        
+                        // 如果不是最大球，则创建更大的球
+                        if (ball.type < config.ballCount - 1) {
+                            const mergedBallType = ball.type + 1;
+                            const mergedBall = {
+                                type: mergedBallType,
+                                x: (newBall.x + ball.x) / 2,
+                                y: (newBall.y + ball.y) / 2,
+                                radius: ballTypes[mergedBallType].radius,
+                                color: ballTypes[mergedBallType].color,
+                                score: ballTypes[mergedBallType].score,
+                                isNewlyMerged: true
+                            };
+                            
+                            // 添加新球
+                            gameState.balls.push(mergedBall);
+                            
+                            // 检查是否可以再次合并
+                            setTimeout(() => checkMerge(mergedBall), 100);
+                        }
+                        
+                        // 触发合并动画
+                        animateMerge((newBall.x + ball.x) / 2, (newBall.y + ball.y) / 2, ballTypes[ball.type].radius);
+                        
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // 合并动画
+        function animateMerge(x, y, radius) {
+            // 创建合并动画效果
+            const animationSteps = 20;
+            let step = 0;
+            
+            function animate() {
+                if (step >= animationSteps) return;
+                
+                step++;
+                const scale = 1 + (step / animationSteps) * 0.5;
+                const alpha = 1 - (step / animationSteps);
+                
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.beginPath();
+                ctx.arc(x, y, radius * scale, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fill();
+                ctx.restore();
+                
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+        
+        // 检查游戏是否结束
+        function checkGameOver() {
+            if (gameState.isGameOver) return;
+            
+            // 检查是否有球超过生成区域
+            for (const ball of gameState.balls) {
+                if (ball.y - ball.radius < config.spawnZoneHeight) {
+                    gameState.isGameOver = true;
+                    cancelAnimationFrame(gameState.animationId);
+                    break;
+                }
+            }
+        }
+        
+        // 更新分数显示
+        function updateScore() {
+            scoreElement.textContent = gameState.score;
+            
+            // 添加分数变化动画
+            scoreElement.classList.add('text-accent');
+            setTimeout(() => {
+                scoreElement.classList.remove('text-accent');
+            }, 200);
+        }
+        
+        // 设置控制
+        function setupControls() {
+            // 按钮控制
+            leftBtn.addEventListener('click', () => moveBall(-1));
+            rightBtn.addEventListener('click', () => moveBall(1));
+            dropBtn.addEventListener('click', quickDrop);
+            
+            // 键盘控制
+            window.addEventListener('keydown', (e) => {
+                if (gameState.isGameOver) return;
+                
+                switch (e.key) {
+                    case 'ArrowLeft':
+                        moveBall(-1);
+                        break;
+                    case 'ArrowRight':
+                        moveBall(1);
+                        break;
+                    case 'ArrowDown':
+                    case ' ':
+                        e.preventDefault();
+                        if (gameState.currentBall && !gameState.currentBall.isDropping) {
+                            dropBall();
+                        } else {
+                            quickDrop();
+                        }
+                        break;
+                }
+            });
+            
+            // 触摸控制
+            let touchStartX = 0;
+            let touchStartTime = 0;
+            
+            canvas.addEventListener('touchstart', (e) => {
+                if (gameState.isGameOver) return;
+                
+                touchStartX = e.touches[0].clientX;
+                touchStartTime = Date.now();
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('touchmove', (e) => {
+                if (gameState.isGameOver || !gameState.currentBall || gameState.currentBall.isDropping) return;
+                
+                const touchX = e.touches[0].clientX;
+                const deltaX = touchX - touchStartX;
+                
+                // 计算移动距离并移动球
+                if (Math.abs(deltaX) > 5) {
+                    const rect = canvas.getBoundingClientRect();
+                    const moveFactor = canvas.width / rect.width;
+                    gameState.currentBall.x += deltaX * moveFactor * 0.1;
+                    
+                    // 边界检查
+                    gameState.currentBall.x = Math.max(
+                        gameState.currentBall.radius, 
+                        Math.min(canvas.width - gameState.currentBall.radius, gameState.currentBall.x)
+                    );
+                    
+                    touchStartX = touchX;
+                }
+                
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('touchend', (e) => {
+                if (gameState.isGameOver || !gameState.currentBall || gameState.currentBall.isDropping) return;
+                
+                const touchTime = Date.now() - touchStartTime;
+                
+                // 短按快速下落，长按正常下落
+                if (touchTime < 200) {
+                    quickDrop();
+                } else {
+                    dropBall();
+                }
+                
+                e.preventDefault();
+            });
+        }
+        
+        // 游戏主循环
+        function gameLoop() {
+            // 绘制游戏
+            drawGame();
+            
+            // 处理球的下落
+            handleFalling();
+            
+            // 继续游戏循环
+            gameState.animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        // 事件监听
+        restartBtn.addEventListener('click', initGame);
+        
+        // 初始化游戏
+        initGame();
+    </script>
+</body>
+  </html>
