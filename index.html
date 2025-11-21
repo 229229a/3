@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水果数字合成</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FF6B6B',
+                        secondary: '#4ECDC4',
+                        accent: '#FFD166',
+                        dark: '#292F36',
+                        light: '#F7FFF7',
+                    },
+                    fontFamily: {
+                        game: ['"Comic Sans MS"', '"Chalkboard SE"', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <!-- 自定义样式 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .fruit-shadow {
+                filter: drop-shadow(0 4px 3px rgb(0 0 0 / 0.1));
+            }
+            .pulse-animation {
+                animation: pulse 0.3s ease-in-out;
+            }
+            @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.1); }
+                100% { transform: scale(1); }
+            }
+            .slide-in {
+                animation: slideIn 0.3s ease-out;
+            }
+            @keyframes slideIn {
+                from { transform: translateY(-20px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-blue-400 to-blue-300 min-h-screen p-4 flex flex-col items-center justify-center">
+    <div class="max-w-md w-full mx-auto">
+        <!-- 游戏标题和分数 -->
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-[clamp(1.5rem,4vw,2.5rem)] font-bold text-light drop-shadow-md">
+                <i class="fa fa-apple text-accent mr-2"></i>水果数字合成
+            </h1>
+            <div class="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg slide-in">
+                <span class="font-bold text-dark">分数: <span id="scoreValue" class="text-primary">0</span></span>
+            </div>
+        </div>
+        
+        <!-- 游戏区域 -->
+        <div class="relative bg-white/20 backdrop-blur-sm rounded-2xl shadow-xl p-3 mb-4 overflow-hidden border border-white/30">
+            <canvas id="gameCanvas" class="w-full rounded-xl bg-blue-50/50" width="400" height="600"></canvas>
+            
+            <!-- 下一个水果预览 -->
+            <div class="absolute top-3 left-3 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md flex items-center slide-in">
+                <span class="font-bold text-dark mr-2 text-sm">下一个:</span>
+                <div id="nextFruitPreview" class="w-12 h-12 rounded-full bg-red-300 flex items-center justify-center fruit-shadow">
+                    <span class="text-white font-bold text-lg">2</span>
+                </div>
+            </div>
+            
+            <!-- 游戏提示 -->
+            <div id="gameTip" class="absolute bottom-3 left-1/2 transform -translate-x-1/2 bg-dark/70 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm slide-in">
+                左右滑动调整位置
+            </div>
+        </div>
+        
+        <!-- 控制按钮 -->
+        <div class="flex justify-between gap-3 mb-6">
+            <button id="leftBtn" class="flex-1 bg-white/80 backdrop-blur-sm py-4 rounded-xl shadow-lg flex items-center justify-center btn-hover fruit-shadow">
+                <i class="fa fa-arrow-left text-dark text-xl"></i>
+            </button>
+            <button id="restartBtn" class="flex-1 bg-accent/80 backdrop-blur-sm py-4 rounded-xl shadow-lg flex items-center justify-center btn-hover fruit-shadow">
+                <i class="fa fa-refresh text-dark text-xl"></i>
+            </button>
+            <button id="rightBtn" class="flex-1 bg-white/80 backdrop-blur-sm py-4 rounded-xl shadow-lg flex items-center justify-center btn-hover fruit-shadow">
+                <i class="fa fa-arrow-right text-dark text-xl"></i>
+            </button>
+        </div>
+        
+        <!-- 游戏规则 -->
+        <div class="bg-white/70 backdrop-blur-sm rounded-xl p-4 text-dark text-sm slide-in">
+            <h3 class="font-bold flex items-center mb-2">
+                <i class="fa fa-info-circle text-primary mr-1"></i> 游戏规则
+            </h3>
+            <ul class="space-y-1">
+                <li>• 左右滑动调整水果位置</li>
+                <li>• 相同数字的水果碰撞会合成更高数字</li>
+                <li>• 数字按2、4、8、16、32...依次递增</li>
+                <li>• 水果堆到顶部时游戏结束</li>
+            </ul>
+        </div>
+        
+        <!-- 游戏结束弹窗 -->
+        <div id="gameOverModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl transform transition-all pulse-animation">
+                <h2 class="text-2xl font-bold text-primary text-center mb-2">游戏结束!</h2>
+                <p class="text-center text-dark mb-4">你的最终得分: <span id="finalScore" class="font-bold text-xl">0</span></p>
+                <button id="playAgainBtn" class="w-full bg-primary text-white py-3 rounded-xl font-bold btn-hover">
+                    再来一局
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('scoreValue');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const nextFruitPreview = document.getElementById('nextFruitPreview');
+        const gameTip = document.getElementById('gameTip');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const finalScoreElement = document.getElementById('finalScore');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        
+        // 游戏配置
+        const config = {
+            gridSize: 5,                // 网格大小
+            dropSpeed: 4,               // 下落速度
+            acceleration: 0.02,         // 下落加速度
+            moveDistance: 80,           // 每次移动距离
+            initialDropInterval: 1000,  // 初始下落间隔(ms)
+            minDropInterval: 300,       // 最小下落间隔(ms)
+            spawnZoneHeight: 60,        // 生成区域高度
+            fruitTypes: 10,             // 水果类型数量(2^1到2^10)
+            maxFruitLevel: 10,          // 最大水果等级
+        };
+        
+        // 水果配置（颜色、乘数、图标）
+        const fruitConfig = [
+            { color: '#FF9E80', border: '#E64A19', score: 10 },  // 2^1=2
+            { color: '#FFCCBC', border: '#D32F2F', score: 20 },  // 2^2=4
+            { color: '#FFEBEE', border: '#C2185B', score: 30 },  // 2^3=8
+            { color: '#F3E5F5', border: '#7B1FA2', score: 50 },  // 2^4=16
+            { color: '#E8EAF6', border: '#3949AB', score: 80 },  // 2^5=32
+            { color: '#E0F7FA', border: '#00695C', score: 120 }, // 2^6=64
+            { color: '#E8F5E9', border: '#2E7D32', score: 200 }, // 2^7=128
+            { color: '#FFFDE7', border: '#F57F17', score: 300 }, // 2^8=256
+            { color: '#FFF3E0', border: '#E65100', score: 500 }, // 2^9=512
+            { color: '#F5F5F5', border: '#424242', score: 800 }  // 2^10=1024
+        ];
+        
+        // 游戏状态
+        let gameState = {
+            fruits: [],              // 所有水果
+            currentFruit: null,      // 当前控制的水果
+            nextFruitLevel: 0,       // 下一个水果等级
+            score: 0,                // 当前分数
+            isGameOver: false,       // 游戏是否结束
+            dropInterval: config.initialDropInterval, // 当前下落间隔
+            lastDropTime: 0,         // 上次下落时间
+            animationId: null,       // 动画帧ID
+            grid: Array(config.gridSize).fill().map(() => Array(config.gridSize).fill(null)), // 网格位置
+        };
+        
+        // 初始化游戏
+        function initGame() {
+            // 重置游戏状态
+            gameState = {
+                fruits: [],
+                currentFruit: null,
+                nextFruitLevel: 0,      // 从最小的水果开始
+                score: 0,
+                isGameOver: false,
+                dropInterval: config.initialDropInterval,
+                lastDropTime: Date.now(),
+                animationId: null,
+                grid: Array(config.gridSize).fill().map(() => Array(config.gridSize).fill(null)),
+            };
+            
+            // 隐藏游戏结束弹窗
+            gameOverModal.classList.add('hidden');
+            
+            // 更新分数显示
+            updateScore();
+            
+            // 创建第一个水果
+            createNewFruit();
+            
+            // 更新下一个水果预览
+            updateNextFruitPreview();
+            
+            // 显示游戏提示
+            gameTip.textContent = "左右滑动调整位置";
+            
+            // 开始游戏循环
+            gameLoop();
+            
+            // 设置控制
+            setupControls();
+        }
+        
+        // 创建新水果
+        function createNewFruit() {
+            // 如果游戏结束则不创建新水果
+            if (gameState.isGameOver) return;
+            
+            // 从顶部中间位置生成
+            const startCol = Math.floor(config.gridSize / 2);
+            const cellSize = canvas.width / config.gridSize;
+            
+            // 检查该位置是否已有水果（游戏结束条件）
+            if (gameState.grid[0][startCol] !== null) {
+                gameOver();
+                return;
+            }
+            
+            // 创建新水果
+            gameState.currentFruit = {
+                level: gameState.nextFruitLevel,
+                value: Math.pow(2, gameState.nextFruitLevel + 1),
+                col: startCol,
+                row: 0,
+                x: startCol * cellSize + cellSize / 2,
+                y: cellSize / 2,
+                radius: cellSize * 0.4,
+                color: fruitConfig[gameState.nextFruitLevel].color,
+                border: fruitConfig[gameState.nextFruitLevel].border,
+                score: fruitConfig[gameState.nextFruitLevel].score,
+                velocityY: 0,
+                isDropping: false,
+                isMerging: false,
+                mergeAnimation: 0,
+            };
+            
+            // 标记网格位置已被占用
+            gameState.grid[0][startCol] = gameState.currentFruit;
+            
+            // 生成下一个水果等级（低等级概率更高）
+            const rand = Math.random();
+            gameState.nextFruitLevel = rand < 0.7 
+                ? 0 // 2 (70%概率)
+                : rand < 0.9 
+                    ? 1 // 4 (20%概率)
+                    : 2; // 8 (10%概率)
+                
+            // 更新预览
+            updateNextFruitPreview();
+        }
+        
+        // 更新下一个水果预览
+        function updateNextFruitPreview() {
+            const level = gameState.nextFruitLevel;
+            const value = Math.pow(2, level + 1);
+            const config = fruitConfig[level];
+            
+            nextFruitPreview.style.width = '30px';
+            nextFruitPreview.style.height = '30px';
+            nextFruitPreview.style.backgroundColor = config.color;
+            nextFruitPreview.style.border = `2px solid ${config.border}`;
+            nextFruitPreview.innerHTML = `<span class="text-white font-bold text-sm">${value}</span>`;
+        }
+        
+        // 绘制游戏
+        function drawGame() {
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制网格背景
+            drawGrid();
+            
+            // 绘制所有静止的水果
+            gameState.fruits.forEach(fruit => {
+                drawFruit(fruit);
+            });
+            
+            // 绘制当前控制的水果
+            if (gameState.currentFruit) {
+                drawFruit(gameState.currentFruit);
+                
+                // 绘制下落轨迹指示器
+                if (!gameState.currentFruit.isDropping) {
+                    drawDropIndicator(gameState.currentFruit);
+                }
+            }
+            
+            // 绘制生成区域
+            drawSpawnZone();
+        }
+        
+        // 绘制网格背景
+        function drawGrid() {
+            const cellSize = canvas.width / config.gridSize;
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            
+            // 绘制垂直线
+            for (let col = 1; col < config.gridSize; col++) {
+                ctx.beginPath();
+                ctx.moveTo(col * cellSize, 0);
+                ctx.lineTo(col * cellSize, canvas.height);
+                ctx.stroke();
+            }
+            
+            // 绘制水平线
+            for (let row = 1; row < config.gridSize; row++) {
+                ctx.beginPath();
+                ctx.moveTo(0, row * cellSize + config.spawnZoneHeight);
+                ctx.lineTo(canvas.width, row * cellSize + config.spawnZoneHeight);
+                ctx.stroke();
+            }
+        }
+        
+        // 绘制水果
+        function drawFruit(fruit) {
+            // 绘制水果阴影
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+            ctx.shadowBlur = 5;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 3;
+            
+            // 绘制水果主体
+            ctx.beginPath();
+            ctx.arc(fruit.x, fruit.y, fruit.radius, 0, Math.PI * 2);
+            ctx.fillStyle = fruit.color;
+            ctx.fill();
+            
+            // 绘制边框
+            ctx.strokeStyle = fruit.border;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // 绘制高光（增加立体感）
+            ctx.beginPath();
+            ctx.arc(
+                fruit.x - fruit.radius * 0.3, 
+                fruit.y - fruit.radius * 0.3, 
+                fruit.radius * 0.3, 
+                0, Math.PI * 2
+            );
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+            
+            // 绘制数字
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${fruit.radius * 0.6}px "Comic Sans MS", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(fruit.value, fruit.x, fruit.y);
+            
+            // 重置阴影
+            ctx.shadowBlur = 0;
+        }
+        
+        // 绘制生成区域
+        function drawSpawnZone() {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, config.spawnZoneHeight);
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, config.spawnZoneHeight);
+            ctx.lineTo(canvas.width, config.spawnZoneHeight);
+            ctx.stroke();
+        }
+        
+        // 绘制下落指示器
+        function drawDropIndicator(fruit) {
+            const cellSize = canvas.width / config.gridSize;
+            const finalY = canvas.height - cellSize / 2 - (fruit.radius - cellSize * 0.4);
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            
+            ctx.beginPath();
+            ctx.moveTo(fruit.x, fruit.y + fruit.radius);
+            ctx.lineTo(fruit.x, finalY - fruit.radius);
+            ctx.stroke();
+            
+            ctx.setLineDash([]); // 重置虚线
+        }
+        
+        // 移动水果
+        function moveFruit(direction) {
+            if (!gameState.currentFruit || gameState.currentFruit.isDropping || gameState.isGameOver) return;
+            
+            const newCol = gameState.currentFruit.col + direction;
+            const cellSize = canvas.width / config.gridSize;
+            
+            // 检查是否在网格范围内
+            if (newCol >= 0 && newCol < config.gridSize) {
+                // 检查目标位置是否为空
+                if (gameState.grid[gameState.currentFruit.row][newCol] === null) {
+                    // 更新网格数据
+                    gameState.grid[gameState.currentFruit.row][gameState.currentFruit.col] = null;
+                    gameState.currentFruit.col = newCol;
+                    gameState.grid[gameState.currentFruit.row][newCol] = gameState.currentFruit;
+                    
+                    // 更新位置
+                    gameState.currentFruit.x = newCol * cellSize + cellSize / 2;
+                    
+                    // 显示提示
+                    gameTip.textContent = "松手让水果落下";
+                }
+            }
+        }
+        
+        // 释放水果（开始下落）
+        function dropFruit() {
+            if (!gameState.currentFruit || gameState.currentFruit.isDropping || gameState.isGameOver) return;
+            
+            gameState.currentFruit.isDropping = true;
+            gameState.currentFruit.velocityY = config.dropSpeed;
+            
+            // 显示提示
+            gameTip.textContent = "合成相同数字的水果";
+        }
+        
+        // 处理水果的下落
+        function handleFalling() {
+            if (!gameState.currentFruit || !gameState.currentFruit.isDropping || gameState.isGameOver) return;
+            
+            const cellSize = canvas.width / config.gridSize;
+            
+            // 应用重力
+            gameState.currentFruit.velocityY += config.acceleration;
+            gameState.currentFruit.y += gameState.currentFruit.velocityY;
+            
+            // 计算当前所在行
+            const rowHeight = canvas.height / config.gridSize;
+            const currentRow = Math.floor((gameState.currentFruit.y - config.spawnZoneHeight) / rowHeight);
+            
+            // 检查是否到达新行
+            if (currentRow !== gameState.currentFruit.row) {
+                // 更新网格数据
+                gameState.grid[gameState.currentFruit.row][gameState.currentFruit.col] = null;
+                gameState.currentFruit.row = currentRow;
+                
+                // 检查目标行是否已被占用
+                if (currentRow < config.gridSize && gameState.grid[currentRow][gameState.currentFruit.col] === null) {
+                    gameState.grid[currentRow][gameState.currentFruit.col] = gameState.currentFruit;
+                } else {
+                    // 已被占用，放置在上一行
+                    placeFruit();
+                    return;
+                }
+            }
+            
+            // 检测是否到达底部
+            if (gameState.currentFruit.y + gameState.currentFruit.radius >= canvas.height) {
+                placeFruit();
+                return;
+            }
+            
+            // 检测是否与下方水果碰撞
+            if (currentRow + 1 < config.gridSize) {
+                const belowFruit = gameState.grid[currentRow + 1][gameState.currentFruit.col];
+                if (belowFruit !== null) {
+                    const distance = gameState.currentFruit.y + gameState.currentFruit.radius - 
+                                    (belowFruit.y - belowFruit.radius);
+                                    
+                    if (distance > 0) {
+                        placeFruit();
+                        return;
+                    }
+                }
+            }
+        }
+        
+        // 放置水果并检查合并
+        function placeFruit() {
+            // 最终位置调整
+            const cellSize = canvas.width / config.gridSize;
+            const finalY = gameState.currentFruit.row * cellSize + cellSize / 2 + config.spawnZoneHeight;
+            gameState.currentFruit.y = finalY;
+            
+            // 将当前水果添加到水果列表
+            gameState.fruits.push(gameState.currentFruit);
+            
+            // 检查是否可以合并
+            const merged = checkMerge(gameState.currentFruit);
+            
+            // 加速游戏
+            gameState.dropInterval = Math.max(
+                config.minDropInterval, 
+                gameState.dropInterval * 0.98
+            );
+            
+            // 创建新水果
+            setTimeout(createNewFruit, merged ? 600 : 300);
+            
+            // 重置当前水果
+            gameState.currentFruit = null;
+        }
+        
+        // 检查合并
+        function checkMerge(newFruit) {
+            let merged = false;
+            const cellSize = canvas.width / config.gridSize;
+            
+            // 查找相同数字的相邻水果
+            for (const fruit of gameState.fruits) {
+                // 跳过自己
+                if (fruit === newFruit) continue;
+                
+                // 检查是否数值相同且足够接近
+                if (fruit.value === newFruit.value) {
+                    const dx = newFruit.x - fruit.x;
+                    const dy = newFruit.y - fruit.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // 相邻水果距离检查
+                    if (distance < newFruit.radius + fruit.radius * 1.1) {
+                        // 可以合并
+                        merged = true;
+                        
+                        // 添加分数
+                        gameState.score += newFruit.score;
+                        updateScore();
+                        
+                        // 更新网格数据
+                        gameState.grid[fruit.row][fruit.col] = null;
+                        gameState.grid[newFruit.row][newFruit.col] = null;
+                        
+                        // 从水果列表中移除两个水果
+                        const index1 = gameState.fruits.indexOf(fruit);
+                        const index2 = gameState.fruits.indexOf(newFruit);
+                        if (index1 > -1) gameState.fruits.splice(index1, 1);
+                        if (index2 > -1) gameState.fruits.splice(index2, 1);
+                        
+                        // 如果不是最高级水果，可以合并为更高级水果
+                        if (newFruit.level < config.maxFruitLevel - 1) {
+                            // 创建合并动画
+                            createMergeAnimation(newFruit, fruit);
+                        }
+                        
+                        break;
+                    }
+                }
+            }
+            
+            return merged;
+        }
+        
+        // 创建合并动画
+        function createMergeAnimation(fruit1, fruit2) {
+            const cellSize = canvas.width / config.gridSize;
+            
+            // 创建合并后的新水果
+            const newLevel = fruit1.level + 1;
+            const newFruit = {
+                level: newLevel,
+                value: Math.pow(2, newLevel + 1),
+                col: Math.min(fruit1.col, fruit2.col),
+                row: Math.min(fruit1.row, fruit2.row),
+                x: (fruit1.x + fruit2.x) / 2,
+                y: (fruit1.y + fruit2.y) / 2,
+                radius: cellSize * 0.4,
+                color: fruitConfig[newLevel].color,
+                border: fruitConfig[newLevel].border,
+                score: fruitConfig[newLevel].score,
+                isMerging: true,
+                mergeProgress: 0,
+            };
+            
+            // 添加到水果列表
+            gameState.fruits.push(newFruit);
+            
+            // 更新网格数据
+            gameState.grid[newFruit.row][newFruit.col] = newFruit;
+            
+            // 合并动画
+            animateMerge(newFruit);
+        }
+        
+        // 合并动画
+        function animateMerge(fruit) {
+            if (!fruit.isMerging) return;
+            
+            fruit.mergeProgress += 0.1;
+            
+            if (fruit.mergeProgress <= 1) {
+                // 动画缩放效果
+                fruit.radius = canvas.width / config.gridSize * 0.4 * (1 + fruit.mergeProgress * 0.5);
+                requestAnimationFrame(() => animateMerge(fruit));
+            } else {
+                // 动画结束
+                fruit.isMerging = false;
+                fruit.radius = canvas.width / config.gridSize * 0.4;
+                
+                // 检查是否可以继续合并
+                setTimeout(() => checkMerge(fruit), 100);
+            }
+        }
+        
+        // 更新分数显示
+        function updateScore() {
+            scoreElement.textContent = gameState.score;
+            
+            // 添加分数变化动画
+            scoreElement.classList.add('pulse-animation');
+            setTimeout(() => {
+                scoreElement.classList.remove('pulse-animation');
+            }, 300);
+        }
+        
+        // 游戏结束
+        function gameOver() {
+            gameState.isGameOver = true;
+            cancelAnimationFrame(gameState.animationId);
+            
+            // 显示最终分数
+            finalScoreElement.textContent = gameState.score;
+            
+            // 显示游戏结束弹窗
+            setTimeout(() => {
+                gameOverModal.classList.remove('hidden');
+            }, 500);
+        }
+        
+        // 设置控制
+        function setupControls() {
+            // 按钮控制
+            leftBtn.addEventListener('click', () => moveFruit(-1));
+            rightBtn.addEventListener('click', () => moveFruit(1));
+            restartBtn.addEventListener('click', initGame);
+            playAgainBtn.addEventListener('click', initGame);
+            
+            // 键盘控制
+            window.addEventListener('keydown', (e) => {
+                if (gameState.isGameOver) return;
+                
+                switch (e.key) {
+                    case 'ArrowLeft':
+                        moveFruit(-1);
+                        break;
+                    case 'ArrowRight':
+                        moveFruit(1);
+                        break;
+                    case 'ArrowDown':
+                    case ' ':
+                        e.preventDefault();
+                        dropFruit();
+                        break;
+                }
+            });
+            
+            // 触摸控制
+            let touchStartX = 0;
+            let isTouching = false;
+            
+            canvas.addEventListener('touchstart', (e) => {
+                if (gameState.isGameOver) return;
+                
+                touchStartX = e.touches[0].clientX;
+                isTouching = true;
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('touchmove', (e) => {
+                if (!isTouching || gameState.isGameOver || !gameState.currentFruit || gameState.currentFruit.isDropping) return;
+                
+                const touchX = e.touches[0].clientX;
+                const deltaX = touchX - touchStartX;
+                
+                // 检测左右滑动
+                if (Math.abs(deltaX) > config.moveDistance / 2) {
+                    if (deltaX > 0) {
+                        moveFruit(1); // 向右移动
+                    } else {
+                        moveFruit(-1); // 向左移动
+                    }
+                    touchStartX = touchX;
+                }
+                
+                e.preventDefault();
+            });
+            
+            canvas.addEventListener('touchend', (e) => {
+                if (!isTouching || gameState.isGameOver || !gameState.currentFruit || gameState.currentFruit.isDropping) return;
+                
+                isTouching = false;
+                dropFruit();
+                e.preventDefault();
+            });
+        }
+        
+        // 更新下一个水果预览
+        function updateNextFruitPreview() {
+            const level = gameState.nextFruitLevel;
+            const value = Math.pow(2, level + 1);
+            const config = fruitConfig[level];
+            
+            nextFruitPreview.style.width = '30px';
+            nextFruitPreview.style.height = '30px';
+            nextFruitPreview.style.backgroundColor = config.color;
+            nextFruitPreview.style.border = `2px solid ${config.border}`;
+            nextFruitPreview.innerHTML = `<span class="text-white font-bold text-lg">${value}</span>`;
+        }
+        
+        // 游戏主循环
+        function gameLoop() {
+            // 绘制游戏
+            drawGame();
+            
+            // 处理水果下落
+            handleFalling();
+            
+            // 继续游戏循环
+            gameState.animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        // 初始化游戏
+        initGame();
+    </script>
+</body>
+                                                                </html>
